@@ -1,9 +1,24 @@
+/// <reference types="vite/client" />
 import axios from 'axios';
 import { useAuthStore } from '../store/auth.store';
 
+// Compute base URL dynamically from Vite environment variables
+const rawApiUrl = import.meta.env.VITE_API_URL || '';
+const hasV1 = rawApiUrl.endsWith('/v1') || rawApiUrl.endsWith('/v1/');
+export const baseURL = rawApiUrl 
+  ? (hasV1 ? rawApiUrl : `${rawApiUrl.replace(/\/$/, '')}/v1`) 
+  : '/api/v1';
+
+// Diagnostic debug logging on startup
+console.log('[DocMind API] Configuration Diagnostics:');
+console.log('  - Environment VITE_API_URL:', import.meta.env.VITE_API_URL || '(not set)');
+console.log('  - Computed Axios baseURL:', baseURL);
+console.log('  - Login Endpoint:', `${baseURL}/auth/login`);
+console.log('  - Register Endpoint:', `${baseURL}/auth/register`);
+
 // Create API instance
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },

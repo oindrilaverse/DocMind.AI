@@ -62,7 +62,7 @@ async function bootstrap() {
   try {
     // Run migrations
     console.log('Checking/running database migrations...');
-    await migrate(db, { migrationsFolder: path.join(process.cwd(), 'drizzle') });
+    await migrate(db, { migrationsFolder: path.join(__dirname, '../drizzle') });
     console.log('Database migrations verified successfully!');
 
     // Start Server

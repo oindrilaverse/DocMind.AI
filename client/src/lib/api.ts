@@ -85,7 +85,7 @@ api.interceptors.response.use(
       try {
         // Attempt silent token refresh
         const refreshResponse = await axios.post(
-          '/api/v1/auth/refresh',
+          `${baseURL}/auth/refresh`,
           {},
           { withCredentials: true }
         );

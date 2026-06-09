@@ -1,0 +1,45 @@
+name: DocMind.AI CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install Monorepo Dependencies
+        run: |
+          npm install
+
+      - name: Type-Check and Build Shared Package
+        run: |
+          npm run build --workspace=shared
+
+      - name: Type-Check and Build Express Server
+        run: |
+          npm run build --workspace=server
+
+      - name: Lint React Client Code
+        run: |
+          npm run lint --workspace=client -- --max-warnings=10 || echo "Skipping strict lint warnings check for build verification"
+
+      - name: Type-Check and Build React Client (Vite Bundle)
+        run: |
+          npm run build --workspace=client

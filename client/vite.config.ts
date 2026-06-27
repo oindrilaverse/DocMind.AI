@@ -17,4 +17,20 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // Raise warning threshold slightly — Recharts is legitimately large
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // Split large vendor libraries into separate cached chunks
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-query': ['@tanstack/react-query'],
+          'vendor-charts': ['recharts'],
+          'vendor-icons': ['lucide-react'],
+        },
+      },
+    },
+  },
 });
+

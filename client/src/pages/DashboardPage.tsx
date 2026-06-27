@@ -7,7 +7,7 @@ import { useChat } from '../hooks/useChat';
 import { 
   Brain, LogOut, FileText, Search, Plus, Trash2, 
   RefreshCw, AlertCircle, HardDrive, Clock, HelpCircle,
-  Database, Activity, Cpu, MessageSquare, Percent
+  Database, Activity, Cpu, MessageSquare, Percent, BarChart2
 } from 'lucide-react';
 import { Document } from '@docmind/shared';
 
@@ -169,6 +169,14 @@ export const DashboardPage: React.FC = () => {
             >
               <Brain className="w-4 h-4" />
               <span>AI Chat</span>
+            </button>
+            {/* Phase 4: AI Evaluation Dashboard navigation button */}
+            <button
+              onClick={() => navigate('/evaluation')}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-violet-700/30 bg-violet-950/20 hover:bg-violet-900/30 rounded-xl text-violet-400 hover:text-violet-200 transition duration-150"
+            >
+              <BarChart2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Evaluation</span>
             </button>
             <button
               onClick={() => logout()}

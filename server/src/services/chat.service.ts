@@ -7,6 +7,9 @@ import { RetrievalProvider } from './retrieval.provider';
 import { ContextBuilderService } from './context.builder';
 import { OllamaLLMProvider } from './ollama.llm';
 import { CitationService, CitationItem } from './citation.service';
+// Phase 4: Import EvaluationService to record metrics after each RAG answer.
+// This import is the ONLY addition to chat.service.ts.
+import { EvaluationService } from './evaluation.service';
 
 export interface ChatMessage {
   id: string;
@@ -139,6 +142,36 @@ export class ChatService {
         answerLatencyMs,
       })
       .where(eq(messages.id, tempAssistantMsg.id));
+
+    // ── Phase 4: Record evaluation metrics (non-blocking) ──────────────────
+    // EvaluationService.recordEvaluation() runs AFTER all RAG logic is complete.
+    // It writes one row to ai_evaluations for the Evaluation Dashboard.
+    // It is wrapped in try/catch inside the service, so failures here will
+    // never affect the response returned to the user.
+    const avgSimilarity =
+      context.length > 0
+        ? context.reduce((sum, c) => sum + c.score, 0) / context.length
+        : 0;
+    const topSimilarity = context.length > 0 ? context[0].score : 0;
+    const totalLatencyMs = retrievalLatencyMs + answerLatencyMs;
+
+    EvaluationService.recordEvaluation({
+      messageId: tempAssistantMsg.id,
+      conversationId: convId,
+      userId: params.userId,
+      documentId: params.documentId ?? null,
+      query: params.query,
+      retrievalLatencyMs,
+      llmLatencyMs: answerLatencyMs,
+      totalLatencyMs,
+      chunksRetrieved: context.length,
+      citationsCount: citationItems.length,
+      avgSimilarityScore: avgSimilarity,
+      topSimilarityScore: topSimilarity,
+      answerText: cleanText,
+      ollamaOnline: isLlmOnline,
+    }); // intentionally not awaited — fire-and-forget to keep latency low
+    // ──────────────────────────────────────────────────────────────────────
 
     return {
       conversationId: convId,

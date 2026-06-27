@@ -6,6 +6,8 @@ import { DashboardPage } from './pages/DashboardPage';
 import { DocumentDetailsPage } from './pages/DocumentDetailsPage';
 import { SearchPage } from './pages/SearchPage';
 import { ChatPage } from './pages/ChatPage';
+// Phase 4: AI Evaluation Dashboard
+import { EvaluationDashboardPage } from './pages/EvaluationDashboardPage';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { useAuthStore } from './store/auth.store';
 import { api } from './lib/api';
@@ -99,6 +101,16 @@ export const App: React.FC = () => {
         element={
           <AuthGuard>
             <ChatPage />
+          </AuthGuard>
+        }
+      />
+
+      {/* Phase 4: AI Evaluation Dashboard */}
+      <Route
+        path="/evaluation"
+        element={
+          <AuthGuard>
+            <EvaluationDashboardPage />
           </AuthGuard>
         }
       />

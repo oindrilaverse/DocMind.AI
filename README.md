@@ -56,7 +56,7 @@ flowchart TD
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React (TypeScript), Vite, Tailwind CSS, React Query, React Router DOM, Zustand.
+- **Frontend**: React (TypeScript), Vite, Tailwind CSS, React Query, React Router DOM, Zustand, **Recharts** (interactive evaluation charts).
 - **Backend**: Node.js, Express (TypeScript), Drizzle ORM.
 - **Database**: PostgreSQL with `pgvector` extension.
 - **AI/LLM**: Local Ollama (`nomic-embed-text` for embeddings, `llama3.2` for completions).
@@ -144,6 +144,80 @@ npm run dev
 - `GET /api/v1/citations/:answerId` — Get citation metadata for a message
 - `GET /api/v1/chat/analytics` — Fetch RAG latency and accuracy analytics
 
+### AI Evaluation Dashboard (Phase 4)
+- `GET /api/v1/evaluation/dashboard` — Aggregated KPI stats + benchmarking (current vs all-time)
+- `GET /api/v1/evaluation/daily` — Per-day time-series data (questions, latency, citations)
+- `GET /api/v1/evaluation/documents` — Most-queried documents ranking
+- `GET /api/v1/evaluation/similarity` — Similarity score histogram distribution
+- `GET /api/v1/evaluation/citations` — Citation count distribution per answer
+- `GET /api/v1/evaluation/recent` — Recent evaluation records (paginated)
+- `GET /api/v1/evaluation/export` — Export evaluation data as CSV or JSON
+
+**Supported Query Parameters** (all optional):
+| Param | Description |
+|-------|-------------|
+| `from` | ISO date string — filter start date |
+| `to` | ISO date string — filter end date |
+| `documentId` | UUID — scope to a specific document |
+| `conversationId` | UUID — scope to a specific conversation |
+| `days` | Integer — number of past days for `/daily` |
+| `format` | `'json'` \| `'csv'` for `/export` |
+
+---
+
+## 📊 AI Evaluation Dashboard (Phase 4)
+
+DocMind AI includes a built-in AI Evaluation Dashboard accessible at `/evaluation`. It automatically records quality and performance metrics after every RAG answer and visualizes them with interactive Recharts charts.
+
+### Evaluation Pipeline Architecture
+
+```
+User Question
+     ↓
+Query Embedding  (nomic-embed-text)
+     ↓
+pgvector Retrieval  [retrieval_latency_ms recorded]
+     ↓
+Context Builder  (top-5 chunks)
+     ↓
+Ollama LLM  (llama3.2)  [llm_latency_ms recorded]
+     ↓
+Citation Engine  [citations_count recorded]
+     ↓
+──────────────────────────────────────────────
+EvaluationService  →  ai_evaluations table
+     ↓
+GET /api/v1/evaluation/*
+     ↓
+EvaluationDashboardPage  /evaluation
+```
+
+### Metrics Recorded Per Answer
+
+| Metric | Formula | What it means |
+|--------|---------|---------------|
+| **Retrieval Latency** | wall clock ms | Time to embed query and retrieve chunks from pgvector |
+| **LLM Latency** | wall clock ms | Time for Ollama to generate the answer |
+| **Total Latency** | retrieval + LLM | End-to-end response time |
+| **Citation Coverage** | citations ÷ chunks_retrieved | How well the LLM utilized the retrieved context |
+| **Retrieval Precision** | avg similarity score | Proxy for how relevant the retrieved chunks were |
+| **Retrieval Recall** | null (placeholder) | Requires ground-truth labels (future work) |
+| **Hallucination Score** | 1 − citation_coverage | Rule-based proxy: uncited answers = higher risk |
+| **Answer Completeness** | min(1, word_count ÷ 50) | Short answers score lower |
+| **Token Estimate** | word_count × 1.3 | GPT-style token approximation |
+
+### Charts Available
+- 📈 Questions per Day (bar)
+- 📉 Retrieval Latency over Time (area)
+- 📉 Answer Latency over Time (area)
+- 🔵 Citation Count Distribution (bar)
+- 🟣 Most Queried Documents (horizontal bar)
+- 🔴 Similarity Score Distribution (histogram)
+
+### Export Formats
+- **CSV**: Download as `docmind-evaluations-YYYY-MM-DD.csv`
+- **JSON**: Download as `docmind-evaluations-YYYY-MM-DD.json`
+
 ---
 
 ## 🎨 Screenshots Section
@@ -158,6 +232,9 @@ npm run dev
 - **Document Re-ranking**: Integrate cross-encoder models (e.g. Cohere Rerank) to filter out retrieved noise prior to prompt completion.
 - **Multi-Document Reasoning**: Enable synthesization and logic reasoning across non-contiguous documents.
 - **OCR Enhancements**: Implement tesseract or cloud OCR engines to transcribe text from scanned images and PDFs.
+- **Ground-Truth Evaluation**: Build a labeled test dataset to compute true Precision@K and Recall@K metrics.
+- **Semantic Completeness Scoring**: Replace word-count heuristic with an NLI-based answer completeness model.
+- **Hallucination Detection**: Integrate a dedicated NLI entailment model to replace the rule-based hallucination score proxy.
 
 ---
 

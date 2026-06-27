@@ -16,6 +16,8 @@ import documentRoutes from './routes/document.routes';
 import searchRoutes from './routes/search.routes';
 import chatRoutes from './routes/chat.routes';
 import systemRoutes from './routes/system.routes';
+// Phase 4: Evaluation Dashboard routes
+import evaluationRoutes from './routes/evaluation.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -43,6 +45,8 @@ app.use('/api/v1/documents', documentRoutes);
 app.use('/api/v1/search', searchRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/system', systemRoutes);
+// Phase 4: AI Evaluation Dashboard API
+app.use('/api/v1/evaluation', evaluationRoutes);
 
 // Base route for status check
 app.get('/api/v1/health', (req, res) => {

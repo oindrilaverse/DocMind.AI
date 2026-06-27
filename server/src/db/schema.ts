@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, bigint, integer, text, jsonb, real, customType } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, bigint, integer, text, jsonb, real, boolean, customType } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // --- Custom vector type for pgvector ---
@@ -177,3 +177,84 @@ export const citationsRelations = relations(citations, ({ one }) => ({
   chunk: one(documentChunks, { fields: [citations.chunkId], references: [documentChunks.id] }),
   document: one(documents, { fields: [citations.documentId], references: [documents.id] }),
 }));
+
+// ─────────────────────────────────────────────────────────
+// --- AI Evaluations Table (Added in Phase 4) ---
+// Stores granular quality + performance metrics for every RAG answer.
+// This is the foundation of the AI Evaluation Dashboard.
+// It is written to by EvaluationService AFTER the RAG pipeline completes —
+// it never blocks or modifies the answer generation process.
+// ─────────────────────────────────────────────────────────
+export const aiEvaluations = pgTable('ai_evaluations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Foreign keys: link evaluation record to the exact assistant message, session, user, and optional document
+  messageId: uuid('message_id').references(() => messages.id, { onDelete: 'cascade' }).notNull(),
+  conversationId: uuid('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }), // nullable — not all queries target a specific doc
+
+  // The original user question (stored for analytics/filtering)
+  query: text('query').notNull(),
+
+  // ── Latency Metrics ──────────────────────────────────────
+  // retrievalLatencyMs: time from embedding the query to getting back chunks from pgvector
+  retrievalLatencyMs: integer('retrieval_latency_ms').notNull(),
+  // llmLatencyMs: time from sending the prompt to Ollama to receiving the completion
+  llmLatencyMs: integer('llm_latency_ms').notNull(),
+  // totalLatencyMs: end-to-end wall clock time (retrieval + LLM + overhead)
+  totalLatencyMs: integer('total_latency_ms').notNull(),
+
+  // ── Retrieval Metrics ─────────────────────────────────────
+  // chunksRetrieved: how many context chunks were passed to the LLM (typically 5)
+  chunksRetrieved: integer('chunks_retrieved').notNull(),
+  // citationsCount: how many of those chunks were actually cited and validated in the answer
+  citationsCount: integer('citations_count').notNull().default(0),
+  // avgSimilarityScore: mean cosine similarity of all retrieved chunks (0–1). Higher = more relevant context.
+  avgSimilarityScore: real('avg_similarity_score').notNull().default(0),
+  // topSimilarityScore: cosine similarity of the single best-matching chunk
+  topSimilarityScore: real('top_similarity_score').notNull().default(0),
+
+  // ── Token Usage (Estimated) ───────────────────────────────
+  // tokensEstimated: rough token count of the answer text (word_count × 1.3 approximation)
+  tokensEstimated: integer('tokens_estimated').notNull().default(0),
+
+  // ── Quality Metrics ───────────────────────────────────────
+  // citationCoverage: citationsCount / chunksRetrieved (0–1).
+  //   Measures how well the LLM uses the provided context.
+  //   Low score → LLM is generating answers not grounded in the retrieved chunks.
+  citationCoverage: real('citation_coverage').notNull().default(0),
+
+  // retrievalPrecision: proxy metric using avgSimilarityScore (0–1).
+  //   High precision = the retriever found highly relevant chunks.
+  //   Will be replaced by proper precision@k when ground-truth labels exist.
+  retrievalPrecision: real('retrieval_precision').notNull().default(0),
+
+  // retrievalRecall: placeholder (null) until a labeled evaluation dataset is built.
+  //   Recall requires knowing ALL relevant chunks for a query, which needs human annotation.
+  retrievalRecall: real('retrieval_recall'), // null = not yet implemented
+
+  // hallucinationScore: 1 - citationCoverage (0–1, rule-based proxy).
+  //   0 = perfectly grounded answer. 1 = no citations, high hallucination risk.
+  //   This is a heuristic — a proper hallucination detector would use NLI models.
+  hallucinationScore: real('hallucination_score').notNull().default(0),
+
+  // answerCompleteness: min(1, answer_word_count / 50).
+  //   Short answers score lower. Heuristic until semantic completeness scoring is added.
+  answerCompleteness: real('answer_completeness').notNull().default(0),
+
+  // ollamaOnline: was the local Ollama LLM available during this request?
+  //   If false, the answer was a fallback message, not a real RAG response.
+  ollamaOnline: boolean('ollama_online').notNull().default(true),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Relations for aiEvaluations table
+export const aiEvaluationsRelations = relations(aiEvaluations, ({ one }) => ({
+  message: one(messages, { fields: [aiEvaluations.messageId], references: [messages.id] }),
+  conversation: one(conversations, { fields: [aiEvaluations.conversationId], references: [conversations.id] }),
+  user: one(users, { fields: [aiEvaluations.userId], references: [users.id] }),
+  document: one(documents, { fields: [aiEvaluations.documentId], references: [documents.id] }),
+}));
+

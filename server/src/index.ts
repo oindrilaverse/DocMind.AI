@@ -124,11 +124,30 @@ async function bootstrap() {
 
     // 5. Start Server, explicitly binding to all network interfaces (0.0.0.0) for Render/Railway compatibility
     const serverPort = Number(PORT);
-    app.listen(serverPort, '0.0.0.0', () => {
+    const server = app.listen(serverPort, '0.0.0.0', () => {
       console.log(`Server is running in ${process.env.NODE_ENV || 'development'} mode`);
       console.log(`- Local address:  http://localhost:${serverPort}`);
       console.log(`- Network bind:   http://0.0.0.0:${serverPort}`);
     });
+
+    // 6. Graceful Shutdown Handlers
+    const shutdown = async (signal: string) => {
+      console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+      server.close(async () => {
+        console.log('HTTP server closed.');
+        try {
+          await pool.end();
+          console.log('PostgreSQL connection pool closed.');
+          process.exit(0);
+        } catch (err) {
+          console.error('Error closing database connection pool during shutdown:', err);
+          process.exit(1);
+        }
+      });
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (error) {
     console.error('Bootstrap failed due to initialization error:', error);
     process.exit(1);

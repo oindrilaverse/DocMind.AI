@@ -35,7 +35,7 @@ import {
 import {
   Brain, ArrowLeft, Download, RefreshCw, Clock, Zap, Target,
   Shield, CheckCircle, MessageSquare, FileText, Activity,
-  BarChart2, Database, TrendingUp, Cpu, AlertTriangle,
+  BarChart2, Database, TrendingUp, Cpu, AlertTriangle, GitBranch
 } from 'lucide-react';
 
 import { MetricCard } from '../components/evaluation/MetricCard';
@@ -157,8 +157,8 @@ export const EvaluationDashboardPage: React.FC = () => {
   const navigate = useNavigate();
 
   // Active filters state — shared across all hooks
-  const [filters, setFilters] = useState<{ from: string; to: string; documentId: string; conversationId: string }>({
-    from: '', to: '', documentId: '', conversationId: '',
+  const [filters, setFilters] = useState<{ from: string; to: string; documentId: string; conversationId: string; retrievalMode: string }>({
+    from: '', to: '', documentId: '', conversationId: '', retrievalMode: '',
   });
 
   // Days range for time-series charts (7, 14, 30, 90)
@@ -174,6 +174,7 @@ export const EvaluationDashboardPage: React.FC = () => {
     ...(filters.to && { to: filters.to }),
     ...(filters.documentId && { documentId: filters.documentId }),
     ...(filters.conversationId && { conversationId: filters.conversationId }),
+    ...(filters.retrievalMode && { retrievalMode: filters.retrievalMode as any }),
   };
 
   // ── Data hooks ─────────────────────────────────────────────────────────────
@@ -239,6 +240,13 @@ export const EvaluationDashboardPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/benchmark')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs rounded-lg transition-colors"
+            >
+              <GitBranch className="w-3.5 h-3.5" />
+              Benchmark Playground
+            </button>
             {/* Export buttons */}
             <button
               onClick={() => handleExport('csv')}
@@ -667,7 +675,7 @@ export const EvaluationDashboardPage: React.FC = () => {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-slate-700/50 bg-slate-900/30">
-                          {['Query', 'Retr. (ms)', 'LLM (ms)', 'Total (ms)', 'Chunks', 'Citations', 'Similarity', 'Coverage', 'Hallucination', 'Ollama', 'Time'].map((h) => (
+                          {['Query', 'Mode', 'Retr. (ms)', 'LLM (ms)', 'Total (ms)', 'Chunks', 'Citations', 'Similarity', 'Coverage', 'Hallucination', 'Ollama', 'Time'].map((h) => (
                             <th key={h} className="text-left text-slate-500 font-medium px-3 py-2.5 whitespace-nowrap">
                               {h}
                             </th>
@@ -680,9 +688,20 @@ export const EvaluationDashboardPage: React.FC = () => {
                             key={r.id}
                             className={`border-b border-slate-800/50 hover:bg-slate-700/20 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-900/10'}`}
                           >
-                            <td className="px-3 py-2 max-w-[200px]">
+                            <td className="px-3 py-2 max-w-[180px]">
                               <span className="truncate block text-slate-300" title={r.query}>
-                                {r.query.length > 40 ? r.query.slice(0, 40) + '…' : r.query}
+                                {r.query.length > 35 ? r.query.slice(0, 35) + '…' : r.query}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border capitalize ${
+                                r.retrievalMode === 'hybrid' 
+                                  ? 'bg-violet-950/40 text-violet-400 border-violet-800/30' 
+                                  : r.retrievalMode === 'keyword'
+                                    ? 'bg-orange-950/40 text-orange-400 border-orange-800/30'
+                                    : 'bg-blue-950/40 text-blue-400 border-blue-800/30'
+                              }`}>
+                                {r.retrievalMode || 'semantic'}
                               </span>
                             </td>
                             <td className="px-3 py-2 text-blue-400 tabular-nums">{r.retrievalLatencyMs}</td>
@@ -692,28 +711,28 @@ export const EvaluationDashboardPage: React.FC = () => {
                             <td className="px-3 py-2 text-violet-400 tabular-nums">{r.citationsCount}</td>
                             <td className="px-3 py-2 text-yellow-400 tabular-nums">{(r.avgSimilarityScore * 100).toFixed(1)}%</td>
                             <td className="px-3 py-2 tabular-nums">
-                              <span className={r.citationCoverage >= 0.6 ? 'text-green-400' : r.citationCoverage >= 0.3 ? 'text-yellow-400' : 'text-red-400'}>
-                                {(r.citationCoverage * 100).toFixed(1)}%
-                              </span>
+                               <span className={r.citationCoverage >= 0.6 ? 'text-green-400' : r.citationCoverage >= 0.3 ? 'text-yellow-400' : 'text-red-400'}>
+                                 {(r.citationCoverage * 100).toFixed(1)}%
+                               </span>
                             </td>
                             <td className="px-3 py-2 tabular-nums">
-                              <span className={r.hallucinationScore <= 0.3 ? 'text-green-400' : r.hallucinationScore <= 0.6 ? 'text-yellow-400' : 'text-red-400'}>
-                                {(r.hallucinationScore * 100).toFixed(1)}%
-                              </span>
+                               <span className={r.hallucinationScore <= 0.3 ? 'text-green-400' : r.hallucinationScore <= 0.6 ? 'text-yellow-400' : 'text-red-400'}>
+                                 {(r.hallucinationScore * 100).toFixed(1)}%
+                               </span>
                             </td>
                             <td className="px-3 py-2">
-                              <span className={r.ollamaOnline ? 'text-green-400' : 'text-red-400'}>
-                                {r.ollamaOnline ? '✓' : '✗'}
-                              </span>
+                               <span className={r.ollamaOnline ? 'text-green-400' : 'text-red-400'}>
+                                 {r.ollamaOnline ? '✓' : '✗'}
+                               </span>
                             </td>
                             <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
-                              {new Date(r.createdAt).toLocaleString()}
+                               {new Date(r.createdAt).toLocaleString()}
                             </td>
                           </tr>
                         ))}
                         {(recent ?? []).length === 0 && (
                           <tr>
-                            <td colSpan={11} className="text-center py-8 text-slate-500">
+                            <td colSpan={12} className="text-center py-8 text-slate-500">
                               No records found for the selected filters.
                             </td>
                           </tr>

@@ -11,7 +11,7 @@ router.use(requireAuth);
 // POST /api/v1/chat/ask
 router.post('/ask', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { query, conversationId, documentId } = req.body;
+    const { query, conversationId, documentId, mode, rerank } = req.body;
 
     if (!query || !query.trim()) {
       return res.status(400).json({ message: 'Parameters "query" is required' });
@@ -26,6 +26,8 @@ router.post('/ask', async (req: AuthenticatedRequest, res: Response, next: NextF
       query,
       conversationId,
       documentId,
+      mode,
+      rerank,
     });
 
     res.status(201).json(response);

@@ -44,8 +44,14 @@ router.get('/dashboard', async (req: AuthenticatedRequest, res: Response, next: 
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
-    const { from, to, documentId, conversationId } = req.query as Record<string, string>;
-    const stats = await EvaluationService.getDashboardStats(req.user.id, { from, to, documentId, conversationId });
+    const { from, to, documentId, conversationId, retrievalMode } = req.query as Record<string, string>;
+    const stats = await EvaluationService.getDashboardStats(req.user.id, { 
+      from, 
+      to, 
+      documentId, 
+      conversationId,
+      retrievalMode: retrievalMode as any 
+    });
 
     res.json(stats);
   } catch (error) {
@@ -62,10 +68,14 @@ router.get('/daily', async (req: AuthenticatedRequest, res: Response, next: Next
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
-    const { days, documentId, conversationId } = req.query as Record<string, string>;
+    const { days, documentId, conversationId, retrievalMode } = req.query as Record<string, string>;
     const daysNum = Math.min(365, Math.max(7, parseInt(days || '30', 10)));
 
-    const data = await EvaluationService.getDailyUsage(req.user.id, daysNum, { documentId, conversationId });
+    const data = await EvaluationService.getDailyUsage(req.user.id, daysNum, { 
+      documentId, 
+      conversationId,
+      retrievalMode: retrievalMode as any 
+    });
     res.json(data);
   } catch (error) {
     next(error);
@@ -81,10 +91,14 @@ router.get('/documents', async (req: AuthenticatedRequest, res: Response, next: 
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
-    const { limit, from, to } = req.query as Record<string, string>;
+    const { limit, from, to, retrievalMode } = req.query as Record<string, string>;
     const limitNum = Math.min(20, Math.max(3, parseInt(limit || '10', 10)));
 
-    const data = await EvaluationService.getMostSearchedDocuments(req.user.id, limitNum, { from, to });
+    const data = await EvaluationService.getMostSearchedDocuments(req.user.id, limitNum, { 
+      from, 
+      to,
+      retrievalMode: retrievalMode as any 
+    });
     res.json(data);
   } catch (error) {
     next(error);
@@ -100,8 +114,14 @@ router.get('/similarity', async (req: AuthenticatedRequest, res: Response, next:
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
-    const { from, to, documentId, conversationId } = req.query as Record<string, string>;
-    const data = await EvaluationService.getSimilarityDistribution(req.user.id, { from, to, documentId, conversationId });
+    const { from, to, documentId, conversationId, retrievalMode } = req.query as Record<string, string>;
+    const data = await EvaluationService.getSimilarityDistribution(req.user.id, { 
+      from, 
+      to, 
+      documentId, 
+      conversationId,
+      retrievalMode: retrievalMode as any 
+    });
     res.json(data);
   } catch (error) {
     next(error);
@@ -117,8 +137,14 @@ router.get('/citations', async (req: AuthenticatedRequest, res: Response, next: 
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
-    const { from, to, documentId, conversationId } = req.query as Record<string, string>;
-    const data = await EvaluationService.getCitationDistribution(req.user.id, { from, to, documentId, conversationId });
+    const { from, to, documentId, conversationId, retrievalMode } = req.query as Record<string, string>;
+    const data = await EvaluationService.getCitationDistribution(req.user.id, { 
+      from, 
+      to, 
+      documentId, 
+      conversationId,
+      retrievalMode: retrievalMode as any 
+    });
     res.json(data);
   } catch (error) {
     next(error);
@@ -134,12 +160,18 @@ router.get('/recent', async (req: AuthenticatedRequest, res: Response, next: Nex
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
-    const { limit, offset, from, to, documentId, conversationId } = req.query as Record<string, string>;
+    const { limit, offset, from, to, documentId, conversationId, retrievalMode } = req.query as Record<string, string>;
     const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10)));
     const offsetNum = Math.max(0, parseInt(offset || '0', 10));
 
     const records = await EvaluationService.getRecentEvaluations(
-      req.user.id, limitNum, offsetNum, { from, to, documentId, conversationId }
+      req.user.id, limitNum, offsetNum, { 
+        from, 
+        to, 
+        documentId, 
+        conversationId,
+        retrievalMode: retrievalMode as any 
+      }
     );
     res.json(records);
   } catch (error) {
@@ -156,11 +188,17 @@ router.get('/export', async (req: AuthenticatedRequest, res: Response, next: Nex
   try {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
-    const { format, from, to, documentId, conversationId } = req.query as Record<string, string>;
+    const { format, from, to, documentId, conversationId, retrievalMode } = req.query as Record<string, string>;
     const exportFormat = format === 'csv' ? 'csv' : 'json';
 
     const data = await EvaluationService.exportEvaluations(
-      req.user.id, exportFormat, { from, to, documentId, conversationId }
+      req.user.id, exportFormat, { 
+        from, 
+        to, 
+        documentId, 
+        conversationId,
+        retrievalMode: retrievalMode as any 
+      }
     );
 
     const timestamp = new Date().toISOString().split('T')[0];
@@ -173,6 +211,41 @@ router.get('/export', async (req: AuthenticatedRequest, res: Response, next: Nex
     }
 
     res.send(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/evaluation/benchmark/run
+// Runs semantic, hybrid, and hybrid+rerank matching stages on the same query
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/benchmark/run', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { query, documentId } = req.body;
+    if (!query || !query.trim()) {
+      return res.status(400).json({ message: 'Benchmark query text is required' });
+    }
+
+    const benchmarkResults = await EvaluationService.runQueryBenchmark(req.user.id, query, documentId);
+    res.json(benchmarkResults);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/evaluation/benchmark/history
+// Retrieves aggregated historical statistics comparing reranked and non-reranked queries
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/benchmark/history', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const stats = await EvaluationService.getBenchmarkHistory(req.user.id);
+    res.json(stats);
   } catch (error) {
     next(error);
   }

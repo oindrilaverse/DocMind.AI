@@ -12,7 +12,7 @@
  *         → These hooks read and present that data on EvaluationDashboardPage
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,6 +23,8 @@ export interface EvalFilters {
   to?: string;              // ISO date string (e.g. "2024-12-31")
   documentId?: string;      // UUID of a specific document
   conversationId?: string;  // UUID of a specific conversation
+  retrievalMode?: 'semantic' | 'keyword' | 'hybrid'; // Added in Phase 5
+  isReranked?: boolean;     // Added in Phase 6
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,13 +110,19 @@ export interface EvalRecord {
   retrievalPrecision: number;
   tokensEstimated: number;
   ollamaOnline: boolean;
+  retrievalMode: 'semantic' | 'keyword' | 'hybrid'; // Added in Phase 5
+  semanticWeight: number | null;                     // Added in Phase 5
+  keywordWeight: number | null;                      // Added in Phase 5
+  isReranked: boolean;                               // Added in Phase 6
+  rerankLatencyMs: number;                           // Added in Phase 6
+  rerankedChunks: number;                            // Added in Phase 6
   createdAt: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: convert a filters object to URLSearchParams string
 // ─────────────────────────────────────────────────────────────────────────────
-function toQueryString(params: Record<string, string | number | undefined>): string {
+function toQueryString(params: Record<string, string | number | boolean | undefined>): string {
   const p = new URLSearchParams();
   Object.entries(params).forEach(([key, val]) => {
     if (val !== undefined && val !== '') p.set(key, String(val));
@@ -133,7 +141,7 @@ function toQueryString(params: Record<string, string | number | undefined>): str
  * Re-fetches automatically when filters change.
  */
 export function useEvalDashboard(filters: EvalFilters = {}) {
-  const qs = toQueryString(filters as Record<string, string>);
+  const qs = toQueryString(filters as Record<string, any>);
   return useQuery<EvalDashboardStats>({
     queryKey: ['evaluation', 'dashboard', filters],
     queryFn: async () => {
@@ -153,7 +161,7 @@ export function useEvalDashboard(filters: EvalFilters = {}) {
  * @param filters  document/conversation scope filters
  */
 export function useEvalDaily(days = 30, filters: EvalFilters = {}) {
-  const qs = toQueryString({ days, ...filters } as Record<string, string | number>);
+  const qs = toQueryString({ days, ...filters } as Record<string, any>);
   return useQuery<EvalDailyPoint[]>({
     queryKey: ['evaluation', 'daily', days, filters],
     queryFn: async () => {
@@ -169,7 +177,7 @@ export function useEvalDaily(days = 30, filters: EvalFilters = {}) {
  * Fetches the most-queried documents ranking.
  */
 export function useEvalDocuments(limit = 10, filters: EvalFilters = {}) {
-  const qs = toQueryString({ limit, ...filters } as Record<string, string | number>);
+  const qs = toQueryString({ limit, ...filters } as Record<string, any>);
   return useQuery<EvalDocument[]>({
     queryKey: ['evaluation', 'documents', limit, filters],
     queryFn: async () => {
@@ -185,7 +193,7 @@ export function useEvalDocuments(limit = 10, filters: EvalFilters = {}) {
  * Fetches similarity score histogram data.
  */
 export function useEvalSimilarity(filters: EvalFilters = {}) {
-  const qs = toQueryString(filters as Record<string, string>);
+  const qs = toQueryString(filters as Record<string, any>);
   return useQuery<SimilarityBucket[]>({
     queryKey: ['evaluation', 'similarity', filters],
     queryFn: async () => {
@@ -201,7 +209,7 @@ export function useEvalSimilarity(filters: EvalFilters = {}) {
  * Fetches citation count distribution data.
  */
 export function useEvalCitations(filters: EvalFilters = {}) {
-  const qs = toQueryString(filters as Record<string, string>);
+  const qs = toQueryString(filters as Record<string, any>);
   return useQuery<CitationBucket[]>({
     queryKey: ['evaluation', 'citations', filters],
     queryFn: async () => {
@@ -217,7 +225,7 @@ export function useEvalCitations(filters: EvalFilters = {}) {
  * Fetches recent evaluation records for the raw data table.
  */
 export function useEvalRecent(limit = 20, offset = 0, filters: EvalFilters = {}) {
-  const qs = toQueryString({ limit, offset, ...filters } as Record<string, string | number>);
+  const qs = toQueryString({ limit, offset, ...filters } as Record<string, any>);
   return useQuery<EvalRecord[]>({
     queryKey: ['evaluation', 'recent', limit, offset, filters],
     queryFn: async () => {
@@ -225,5 +233,93 @@ export function useEvalRecent(limit = 20, offset = 0, filters: EvalFilters = {})
       return res.data;
     },
     staleTime: 15_000,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6: Benchmark Types & Hooks
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BenchmarkHistoryData {
+  withRerank: {
+    avgTotalLatencyMs: number;
+    avgRetrievalLatencyMs: number;
+    avgRerankLatencyMs: number;
+    avgLlmLatencyMs: number;
+    avgCitationCoverage: number;
+    avgSimilarityScore: number;
+    totalQuestions: number;
+  };
+  withoutRerank: {
+    avgTotalLatencyMs: number;
+    avgRetrievalLatencyMs: number;
+    avgRerankLatencyMs: number;
+    avgLlmLatencyMs: number;
+    avgCitationCoverage: number;
+    avgSimilarityScore: number;
+    totalQuestions: number;
+  };
+}
+
+export interface BenchmarkRunResult {
+  query: string;
+  semantic: {
+    latencyMs: number;
+    topScore: number;
+    avgScore: number;
+    results: Array<{ content: string; score: number; documentName: string; pageNumber: number | null; rank: number }>;
+  };
+  hybrid: {
+    latencyMs: number;
+    topScore: number;
+    avgScore: number;
+    results: Array<{ content: string; score: number; documentName: string; pageNumber: number | null; rank: number }>;
+  };
+  hybridRerank: {
+    latencyMs: number;
+    retrievalLatencyMs: number;
+    rerankLatencyMs: number;
+    topScore: number;
+    avgScore: number;
+    topRerankScore: number;
+    avgRerankScore: number;
+    results: Array<{
+      content: string;
+      score: number;
+      documentName: string;
+      pageNumber: number | null;
+      originalRank: number;
+      newRank: number;
+      rerankScore: number;
+      rank: number;
+    }>;
+  };
+}
+
+/**
+ * useEvalBenchmarkHistory()
+ * Fetches aggregated metrics comparing Reranked vs Non-Reranked queries.
+ */
+export function useEvalBenchmarkHistory() {
+  return useQuery<BenchmarkHistoryData>({
+    queryKey: ['evaluation', 'benchmark', 'history'],
+    queryFn: async () => {
+      const res = await api.get('/evaluation/benchmark/history');
+      return res.data;
+    },
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * useRunBenchmarkMutation()
+ * Triggers a side-by-side RAG benchmark run for a specific query text.
+ */
+export function useRunBenchmarkMutation() {
+  return useMutation<BenchmarkRunResult, Error, { query: string; documentId?: string }>({
+    mutationFn: async ({ query, documentId }) => {
+      const res = await api.post('/evaluation/benchmark/run', { query, documentId });
+      return res.data;
+    },
   });
 }

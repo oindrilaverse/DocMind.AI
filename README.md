@@ -20,6 +20,9 @@
 - **Multi-Format Ingestion**: Direct text extraction pipelines for PDF, DOCX, and PPTX files.
 - **Paragraph-Aware Sliding Chunking**: Splitting text into 500-word blocks with 100-word overlap, respecting structural boundaries.
 - **pgvector Database Storage**: Vector-native semantic lookup utilizing PostgreSQL's `pgvector` datatype and HNSW indexing for rapid cosine similarity calculations.
+- **Hybrid Retrieval System**: Configurable retrieval modes (Semantic, Keyword, Hybrid). Integrates Okapi BM25 ranking and PostgreSQL vector search with Max-Score normalization and score fusion. Bypasses embedding generation entirely in Keyword mode.
+- **Cross-Encoder Reranking**: Re-scores top 20 candidate chunks through a local proximity/N-gram encoder or Cohere API, prioritizing the top 5 final chunks to reduce LLM context length and minimize hallucination risk.
+- **Interactive Pipeline Playground**: Dedicated side-by-side RAG testing console comparing Semantic-only, Hybrid, and Hybrid + Reranker latencies, relevance scores, and chunk ranking shifts.
 - **Grounded Prompt Context Assembly**: Merges user queries with the top 5 retrieved context chunks into an optimized grounding context.
 - **Local Privacy-First LLM**: Completion outputs generated locally using **Ollama** running `llama3.2` with low temperature (`0.1`) for strict data compliance.
 - **Hallucination-Resistant Citation Engine**: Cross-checks and validates LLM references against the retrieved database context, generating visual citation badges.
@@ -42,13 +45,19 @@ flowchart TD
     end
 
     subgraph "RAG Conversation Pipeline"
-        H[User Question] --> I[Generate Query Embedding]
-        I --> J[Semantic Retrieval: Top-5 Chunks]
-        J --> K[Context Builder: Rank Chunks]
-        K --> L[OllamaLLMProvider: llama3.2]
-        L --> M[Citation Engine: Map & Validate Citations]
-        M --> N[Grounded Answer & Interactive Citations]
-        N --> O[UI Render & Highlight Navigation]
+        H[User Question] --> I{Retrieval Mode?}
+        I -->|Semantic or Hybrid| J[Generate Query Embedding]
+        I -->|Keyword Only| K[Skip Embedding]
+        J --> L[Semantic Retrieval: pgvector Cosine]
+        K --> M[Keyword Retrieval: BM25 index]
+        J --> M
+        L & M --> N[Score Fusion: Max-Score Normalized Weighted Sum]
+        N --> O[Top 20 Candidates]
+        O --> P[Cross-Encoder Reranker: Local or Cohere]
+        P --> Q[Top-5 Final Context Chunks]
+        Q --> R[OllamaLLMProvider: llama3.2]
+        R --> S[Citation Engine: Map & Validate Citations]
+        S --> T[Grounded Answer & Interactive Citations]
     end
 ```
 
@@ -87,6 +96,10 @@ DATABASE_URL=postgres://your_user:your_password@localhost:5432/docmind_ai
 JWT_ACCESS_SECRET=your_jwt_access_secret_should_be_long_and_secure
 JWT_REFRESH_SECRET=your_jwt_refresh_secret_should_be_long_and_secure
 CLIENT_URL=http://localhost:5173
+
+# Hybrid Retrieval Score Fusion Weights
+HYBRID_SEMANTIC_WEIGHT=0.5
+HYBRID_KEYWORD_WEIGHT=0.5
 ```
 
 ### 3. Initialize Ollama
@@ -226,10 +239,8 @@ EvaluationDashboardPage  /evaluation
 
 ---
 
-## 🔮 Future Roadmap
+## 🔮 Project Roadmap
 
-- **Hybrid Search**: Combine dense vector embeddings with sparse keyword search (BM25) for enhanced retrieval accuracy.
-- **Document Re-ranking**: Integrate cross-encoder models (e.g. Cohere Rerank) to filter out retrieved noise prior to prompt completion.
 - **Multi-Document Reasoning**: Enable synthesization and logic reasoning across non-contiguous documents.
 - **OCR Enhancements**: Implement tesseract or cloud OCR engines to transcribe text from scanned images and PDFs.
 - **Ground-Truth Evaluation**: Build a labeled test dataset to compute true Precision@K and Recall@K metrics.
@@ -238,6 +249,29 @@ EvaluationDashboardPage  /evaluation
 
 ---
 
+## 🚀 Production Deployment Guide
+
+### Backend Deployment (Render / Railway)
+- **Root Directory**: `server`
+- **Build Command**: `npm install && npm run build --workspace=shared && npm run build --workspace=server`
+- **Start Command**: `npm run start --workspace=server`
+- **Environment Variables**:
+  - `PORT`: Set to the port provided by the host.
+  - `DATABASE_URL`: Production PostgreSQL connection string.
+  - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: Secure cryptographic strings.
+  - `CLIENT_URL`: Deployed client address (for CORS verification).
+
+### Frontend Deployment (Vercel / Netlify)
+- **Root Directory**: `client`
+- **Framework Preset**: `Vite`
+- **Build Command**: `tsc && vite build`
+- **Output Directory**: `dist`
+- **Environment Variables**:
+  - `VITE_API_URL`: Deployed backend API base URL.
+
+---
+
 ## 📝 License
 
 This project is licensed under the [MIT License](LICENSE).
+

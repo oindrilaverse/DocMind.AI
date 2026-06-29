@@ -27,10 +27,17 @@ interface EvalFiltersProps {
     to: string;
     documentId: string;
     conversationId: string;
+    retrievalMode: string; // Added in Phase 5
   };
 
   /** Called when user applies or resets filters */
-  onFilterChange: (filters: { from: string; to: string; documentId: string; conversationId: string }) => void;
+  onFilterChange: (filters: { 
+    from: string; 
+    to: string; 
+    documentId: string; 
+    conversationId: string; 
+    retrievalMode: string; 
+  }) => void;
 
   /** List of user documents to populate the document selector */
   documents?: Document[];
@@ -53,14 +60,14 @@ export const EvalFilters: React.FC<EvalFiltersProps> = ({
   const [draft, setDraft] = useState(filters);
 
   const hasActiveFilters =
-    !!filters.from || !!filters.to || !!filters.documentId || !!filters.conversationId;
+    !!filters.from || !!filters.to || !!filters.documentId || !!filters.conversationId || !!filters.retrievalMode;
 
   const handleApply = () => {
     onFilterChange(draft);
   };
 
   const handleReset = () => {
-    const cleared = { from: '', to: '', documentId: '', conversationId: '' };
+    const cleared = { from: '', to: '', documentId: '', conversationId: '', retrievalMode: '' };
     setDraft(cleared);
     onFilterChange(cleared);
   };
@@ -77,7 +84,7 @@ export const EvalFilters: React.FC<EvalFiltersProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {/* From Date */}
         <div>
           <label className="flex items-center gap-1 text-xs text-slate-400 mb-1">
@@ -143,6 +150,24 @@ export const EvalFilters: React.FC<EvalFiltersProps> = ({
                 {conv.title}
               </option>
             ))}
+          </select>
+        </div>
+
+        {/* Retrieval Mode filter */}
+        <div>
+          <label className="flex items-center gap-1 text-xs text-slate-400 mb-1">
+            <Filter className="w-3 h-3" />
+            Retrieval Mode
+          </label>
+          <select
+            value={draft.retrievalMode}
+            onChange={(e) => setDraft((d) => ({ ...d, retrievalMode: e.target.value }))}
+            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
+          >
+            <option value="">All Modes</option>
+            <option value="semantic">Semantic (Vector)</option>
+            <option value="keyword">Keyword (BM25)</option>
+            <option value="hybrid">Hybrid (Combined)</option>
           </select>
         </div>
       </div>

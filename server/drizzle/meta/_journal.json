@@ -29,6 +29,20 @@
       "when": 1783013824000,
       "tag": "0003_ai_evaluations",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783042456000,
+      "tag": "0004_add_retrieval_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783060000000,
+      "tag": "0005_add_rerank_fields",
+      "breakpoints": true
     }
   ]
 }

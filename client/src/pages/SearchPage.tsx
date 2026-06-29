@@ -19,6 +19,8 @@ export const SearchPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [selectedDocId, setSelectedDocId] = useState('');
   const [limit, setLimit] = useState(5);
+  const [retrievalMode, setRetrievalMode] = useState<'semantic' | 'keyword' | 'hybrid'>('hybrid'); // Default to hybrid for rich results
+  const [rerank, setRerank] = useState(true); // Added in Phase 6: Cross-Encoder Reranking
   
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -31,11 +33,11 @@ export const SearchPage: React.FC = () => {
     setIsSearching(true);
     setSearchError('');
     try {
-      const data = await executeSearch(query, selectedDocId, limit);
+      const data = await executeSearch(query, selectedDocId, limit, retrievalMode, rerank);
       setSearchData(data);
     } catch (err: any) {
       console.error(err);
-      setSearchError(err.response?.data?.message || 'Failed to complete semantic search. Make sure Ollama is running.');
+      setSearchError(err.response?.data?.message || 'Failed to complete search. Verify service connectivity.');
     } finally {
       setIsSearching(false);
     }
@@ -84,7 +86,7 @@ export const SearchPage: React.FC = () => {
             <div className="flex flex-col md:flex-row gap-4">
               
               {/* Scope filter */}
-              <div className="w-full md:w-64">
+              <div className="w-full md:w-48">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-textmuted mb-2">
                   Search Scope
                 </label>
@@ -102,10 +104,26 @@ export const SearchPage: React.FC = () => {
                 </select>
               </div>
 
+              {/* Retrieval Mode filter */}
+              <div className="w-full md:w-48">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-textmuted mb-2">
+                  Retrieval Mode
+                </label>
+                <select
+                  value={retrievalMode}
+                  onChange={(e) => setRetrievalMode(e.target.value as any)}
+                  className="block w-full py-2.5 px-3 bg-darkbg border border-darkborder rounded-xl text-textmain focus:outline-none focus:border-primary text-sm"
+                >
+                  <option value="semantic">Semantic (Vector)</option>
+                  <option value="keyword">Keyword (BM25)</option>
+                  <option value="hybrid">Hybrid (Combined)</option>
+                </select>
+              </div>
+
               {/* Text input */}
               <div className="flex-1">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-textmuted mb-2">
-                  Semantic Query
+                  Search Query
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
@@ -115,7 +133,7 @@ export const SearchPage: React.FC = () => {
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Enter your concept or question... (e.g. What are the key financials?)"
+                    placeholder="Enter your concept, keyword or question..."
                     disabled={isSearching}
                     className="block w-full pl-11 pr-4 py-2.5 bg-darkbg border border-darkborder rounded-xl text-textmain placeholder-textmuted focus:outline-none focus:border-primary transition duration-150 disabled:opacity-50 text-sm"
                   />
@@ -126,18 +144,33 @@ export const SearchPage: React.FC = () => {
             {/* Slider and Buttons block */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
               
-              {/* Limit slider */}
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <Sliders className="w-4 h-4 text-textmuted shrink-0" />
-                <span className="text-xs text-textmuted font-semibold">Results (K): {limit}</span>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={limit}
-                  onChange={(e) => setLimit(parseInt(e.target.value, 10))}
-                  className="accent-primary h-1 bg-darkborder rounded-lg appearance-none cursor-pointer w-32"
-                />
+              {/* Limit slider and Rerank checkbox */}
+              <div className="flex flex-wrap items-center gap-6 w-full sm:w-auto">
+                <div className="flex items-center gap-3">
+                  <Sliders className="w-4 h-4 text-textmuted shrink-0" />
+                  <span className="text-xs text-textmuted font-semibold">Results (K): {limit}</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={limit}
+                    onChange={(e) => setLimit(parseInt(e.target.value, 10))}
+                    className="accent-primary h-1 bg-darkborder rounded-lg appearance-none cursor-pointer w-32"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 border-l border-darkborder pl-6">
+                  <input
+                    type="checkbox"
+                    id="rerankToggle"
+                    checked={rerank}
+                    onChange={(e) => setRerank(e.target.checked)}
+                    className="w-4 h-4 rounded text-primary focus:ring-primary border-darkborder bg-darkbg cursor-pointer"
+                  />
+                  <label htmlFor="rerankToggle" className="text-xs font-semibold text-textmain cursor-pointer select-none">
+                    Cross-Encoder Reranking
+                  </label>
+                </div>
               </div>
 
               <button
@@ -248,9 +281,34 @@ export const SearchPage: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="text-right">
+                      <div className="text-right flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                        {res.semanticScore !== undefined && res.semanticScore > 0 && (
+                          <span className="text-[10px] bg-blue-950/40 text-blue-400 border border-blue-800/30 px-2 py-0.5 rounded font-semibold">
+                            Semantic: {(res.semanticScore * 100).toFixed(0)}%
+                          </span>
+                        )}
+                        {res.keywordScore !== undefined && res.keywordScore > 0 && (
+                          <span className="text-[10px] bg-orange-950/40 text-orange-400 border border-orange-800/30 px-2 py-0.5 rounded font-semibold">
+                            Keyword: {(res.keywordScore * 100).toFixed(0)}%
+                          </span>
+                        )}
+                        {res.originalRank !== undefined && res.newRank !== undefined && (
+                          <span className="text-[10px] bg-pink-950/40 text-pink-400 border border-pink-800/30 px-2 py-0.5 rounded font-semibold" title={`Reranked from initial pool position #${res.originalRank}`}>
+                            Rank: #{res.originalRank} → #{res.newRank}
+                          </span>
+                        )}
+                        {res.rerankScore !== undefined && res.rerankScore > 0 && (
+                          <span className="text-[10px] bg-emerald-950/40 text-emerald-400 border border-emerald-800/30 px-2 py-0.5 rounded font-semibold">
+                            Rerank: {(res.rerankScore * 100).toFixed(0)}%
+                          </span>
+                        )}
+                        {res.retrievalMode && (
+                          <span className="text-[10px] bg-violet-950/40 text-violet-400 border border-violet-800/30 px-2 py-0.5 rounded font-semibold capitalize">
+                            {res.retrievalMode}
+                          </span>
+                        )}
                         <span className="text-textmuted">Score: </span>
-                        <span className="font-bold text-textmain">{(res.score * 100).toFixed(2)}%</span>
+                        <span className="font-bold text-textmain">{(res.score * 100).toFixed(1)}%</span>
                       </div>
                     </div>
 

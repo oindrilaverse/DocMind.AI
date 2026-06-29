@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS "search_logs" (
 );
 --> statement-breakpoint
 ALTER TABLE "document_chunks" ADD COLUMN "word_count" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE "embeddings" ADD COLUMN "embedding" "vector(768)" NOT NULL;--> statement-breakpoint
+ALTER TABLE "embeddings" ADD COLUMN "embedding" vector(768) NOT NULL;--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "search_logs" ADD CONSTRAINT "search_logs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION

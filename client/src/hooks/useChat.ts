@@ -9,6 +9,9 @@ export interface CitationItem {
   pageNumber: number | null;
   similarityScore: number;
   snippet: string;
+  originalRank?: number | null; // Added in Phase 6
+  newRank?: number | null;      // Added in Phase 6
+  rerankScore?: number | null;  // Added in Phase 6
 }
 
 export interface ChatMessage {
@@ -84,13 +87,15 @@ export function useChat() {
   const askMutation = useMutation<
     ChatAskResponse,
     Error,
-    { query: string; conversationId?: string; documentId?: string }
+    { query: string; conversationId?: string; documentId?: string; mode?: 'semantic' | 'keyword' | 'hybrid'; rerank?: boolean }
   >({
-    mutationFn: async ({ query, conversationId, documentId }) => {
+    mutationFn: async ({ query, conversationId, documentId, mode, rerank }) => {
       const response = await api.post('/chat/ask', {
         query,
         conversationId: conversationId || undefined,
         documentId: documentId || undefined,
+        mode,
+        rerank,
       });
       return response.data;
     },

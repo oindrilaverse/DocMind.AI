@@ -13,6 +13,8 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
     const query = req.query.q as string;
     const documentId = req.query.documentId as string | undefined;
     const limitVal = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const mode = req.query.mode as 'semantic' | 'keyword' | 'hybrid' | undefined;
+    const rerank = req.query.rerank === 'true' ? true : req.query.rerank === 'false' ? false : undefined;
 
     if (!query || !query.trim()) {
       return res.status(400).json({ message: 'Search query parameter "q" is required' });
@@ -27,6 +29,8 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
       query,
       documentId,
       limit: limitVal,
+      mode,
+      rerank,
     });
 
     res.json(results);
@@ -38,7 +42,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
 // POST /api/v1/search/query
 router.post('/query', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { query, documentId, limit } = req.body;
+    const { query, documentId, limit, mode, rerank } = req.body;
 
     if (!query || !query.trim()) {
       return res.status(400).json({ message: 'Search body parameter "query" is required' });
@@ -53,6 +57,8 @@ router.post('/query', async (req: AuthenticatedRequest, res: Response, next: Nex
       query,
       documentId,
       limit,
+      mode,
+      rerank,
     });
 
     res.json(results);

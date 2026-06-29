@@ -4,6 +4,26 @@ All notable changes to **DocMind.AI** will be documented in this file.
 
 ---
 
+## [1.2.0] - 2026-06-29
+### Added
+- **Phase 6: Cross-Encoder Reranking & Benchmarking**:
+  - Integrated provider-based Reranking architecture (`IRerankerProvider`) supporting local N-gram proximity cross-encoder and Cohere `/v1/rerank` API.
+  - Hot-swappable environment-driven configuration variables (`RERANKER_ENABLED`, `RERANKER_PROVIDER`, `RERANKER_CANDIDATE_COUNT`, `RERANKER_FINAL_LIMIT`).
+  - Added pipeline rank-shift indicators (`#12 → #2`) and cross-encoder relevance scores inside Search results and Chat citations.
+  - Created the **RAG Pipeline Benchmarking Console** (`/benchmark`) displaying latency comparison bar charts (Semantic vs Hybrid vs Reranker) via Recharts.
+  - Supported real-time side-by-side RAG pipeline query playground and historical comparison runs.
+
+## [1.1.0] - 2026-06-25
+### Added
+- **Phase 4 & 5: AI Evaluation Dashboard & Hybrid Search**:
+  - Aggregated performance telemetry dashboard visualizing response times, daily usage, citation densities, and similarity score distributions.
+  - Configurable Max-Score normalized weighted score fusion combining PostgreSQL vector search and local Okapi BM25 keyword matching.
+  - Exposed environment configurations (`HYBRID_SEMANTIC_WEIGHT` and `HYBRID_KEYWORD_WEIGHT`) to easily tune retrieval modes.
+  - Interactive pipeline filters (date range, documents, retrieval modes) scoped to the authenticated user.
+  - Telemetry exports in structured CSV and JSON formats.
+
+---
+
 ## [1.0.0] - 2026-06-09
 ### Added
 - **Phase 3: Grounded RAG & Citations Engine**:

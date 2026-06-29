@@ -10,6 +10,7 @@ import { CitationService, CitationItem } from './citation.service';
 // Phase 4: Import EvaluationService to record metrics after each RAG answer.
 // This import is the ONLY addition to chat.service.ts.
 import { EvaluationService } from './evaluation.service';
+import { RerankerService } from './rerank/reranker.service';
 
 export interface ChatMessage {
   id: string;
@@ -41,8 +42,11 @@ export class ChatService {
     query: string;
     conversationId?: string;
     documentId?: string; // Optional filter scope
+    mode?: 'semantic' | 'keyword' | 'hybrid'; // Added in Phase 5
+    rerank?: boolean; // Added in Phase 6
   }): Promise<ChatAskResponse> {
     let convId = params.conversationId;
+    const mode = params.mode || 'semantic';
 
     // 1. Create conversation if none provided
     if (!convId) {
@@ -74,14 +78,55 @@ export class ChatService {
 
     const retrievalStart = Date.now();
 
-    // 3. Generate query vector using Nomics embedding
-    const queryVector = await this.embeddingProvider.generateEmbedding(params.query);
+    // Rerank config check
+    const rerankEnabled = params.rerank !== undefined
+      ? params.rerank
+      : process.env.RERANKER_ENABLED !== 'false';
 
-    // 4. Retrieve matching context chunks from vector DB (Limit to Top-5)
+    const finalLimit = 5;
+    const candidateLimit = rerankEnabled
+      ? Number(process.env.RERANKER_CANDIDATE_COUNT || 20)
+      : finalLimit;
+
+    // 3. Performance optimization: Generate query embedding vector ONLY if semantic calculations are required.
+    // This avoids unnecessary network calls and model load overhead for pure keyword queries.
+    let queryVector: number[] | null = null;
+    if (mode === 'semantic' || mode === 'hybrid') {
+      queryVector = await this.embeddingProvider.generateEmbedding(params.query);
+    }
+
+    // Resolve configuration weights for hybrid fusion
+    const semWeight = Number(process.env.HYBRID_SEMANTIC_WEIGHT || 0.5);
+    const keyWeight = Number(process.env.HYBRID_KEYWORD_WEIGHT || 0.5);
+
+    // 4. Retrieve matching candidate context chunks (Limit to Candidate Limit)
     const scopeDocIds = params.documentId ? [params.documentId] : [];
-    const context = await this.retrievalProvider.retrieveChunks(queryVector, scopeDocIds, 5);
+    let context = await this.retrievalProvider.retrieveChunks(
+      queryVector,
+      scopeDocIds,
+      candidateLimit,
+      {
+        mode,
+        queryText: params.query,
+        userId: params.userId,
+        semanticWeight: semWeight,
+        keywordWeight: keyWeight,
+      }
+    );
 
-    const retrievalLatencyMs = Date.now() - retrievalStart;
+    const baseRetrievalLatencyMs = Date.now() - retrievalStart;
+
+    // Reranking Stage
+    let rerankLatencyMs = 0;
+    const rawCandidatesCount = context.length;
+    if (rerankEnabled && context.length > 0) {
+      const rerankStart = Date.now();
+      context = await RerankerService.rerank(params.query, context);
+      context = context.slice(0, finalLimit);
+      rerankLatencyMs = Date.now() - rerankStart;
+    }
+
+    const retrievalLatencyMs = baseRetrievalLatencyMs + rerankLatencyMs;
 
     // Load past message history for context reasoning
     const pastRecords = await db
@@ -150,9 +195,9 @@ export class ChatService {
     // never affect the response returned to the user.
     const avgSimilarity =
       context.length > 0
-        ? context.reduce((sum, c) => sum + c.score, 0) / context.length
+        ? context.reduce((sum, c) => sum + (c.semanticScore !== undefined ? c.semanticScore : c.score), 0) / context.length
         : 0;
-    const topSimilarity = context.length > 0 ? context[0].score : 0;
+    const topSimilarity = context.length > 0 ? (context[0].semanticScore !== undefined ? context[0].semanticScore : context[0].score) : 0;
     const totalLatencyMs = retrievalLatencyMs + answerLatencyMs;
 
     EvaluationService.recordEvaluation({
@@ -170,6 +215,12 @@ export class ChatService {
       topSimilarityScore: topSimilarity,
       answerText: cleanText,
       ollamaOnline: isLlmOnline,
+      retrievalMode: mode,
+      semanticWeight: mode === 'hybrid' ? semWeight : null,
+      keywordWeight: mode === 'hybrid' ? keyWeight : null,
+      isReranked: rerankEnabled,
+      rerankLatencyMs,
+      rerankedChunks: rerankEnabled ? rawCandidatesCount : 0,
     }); // intentionally not awaited — fire-and-forget to keep latency low
     // ──────────────────────────────────────────────────────────────────────
 

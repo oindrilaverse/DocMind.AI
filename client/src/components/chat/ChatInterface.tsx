@@ -19,6 +19,8 @@ export const ChatInterface: React.FC = () => {
   const [query, setQuery] = useState('');
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [expandedCitations, setExpandedCitations] = useState<Record<string, boolean>>({});
+  const [retrievalMode, setRetrievalMode] = useState<'semantic' | 'keyword' | 'hybrid'>('hybrid'); // Default to hybrid for robust answers
+  const [rerank, setRerank] = useState(true); // Added in Phase 6: Cross-Encoder Reranking
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +77,9 @@ export const ChatInterface: React.FC = () => {
       const response = await askQuestion({
         query: currentQuery,
         conversationId: activeConvId || undefined,
-        documentId: selectedDocId || undefined
+        documentId: selectedDocId || undefined,
+        mode: retrievalMode,
+        rerank
       });
 
       // Update active conversation ID and refetch list
@@ -144,6 +148,38 @@ export const ChatInterface: React.FC = () => {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Retrieval Mode Selection */}
+          <div className="space-y-2 pt-1">
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-textmuted flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-primary animate-pulse" />
+                Retrieval Mode
+              </label>
+              <select
+                value={retrievalMode}
+                onChange={(e) => setRetrievalMode(e.target.value as any)}
+                className="w-full bg-darkbg border border-darkborder rounded-xl px-3 py-2 text-xs text-textmain focus:outline-none focus:border-primary"
+              >
+                <option value="semantic">Semantic (Vector)</option>
+                <option value="keyword">Keyword (BM25)</option>
+                <option value="hybrid">Hybrid (Combined)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 px-1">
+              <input
+                type="checkbox"
+                id="sidebarRerankToggle"
+                checked={rerank}
+                onChange={(e) => setRerank(e.target.checked)}
+                className="w-3.5 h-3.5 rounded text-primary focus:ring-primary border-darkborder bg-darkbg cursor-pointer"
+              />
+              <label htmlFor="sidebarRerankToggle" className="text-[10px] font-semibold text-textmain cursor-pointer select-none">
+                Cross-Encoder Reranking
+              </label>
+            </div>
           </div>
         </div>
 
@@ -311,7 +347,17 @@ export const ChatInterface: React.FC = () => {
                                       <FileText className="w-4 h-4 text-primary shrink-0" />
                                       <span className="truncate max-w-[200px]">{cite.documentName}</span>
                                     </div>
-                                    <div className="flex items-center gap-2 font-semibold text-textmuted group-hover:text-primary shrink-0">
+                                    <div className="flex items-center gap-2 font-semibold text-textmuted group-hover:text-primary shrink-0 flex-wrap justify-end">
+                                      {cite.originalRank !== undefined && cite.originalRank !== null && cite.newRank !== undefined && cite.newRank !== null && (
+                                        <span className="text-[10px] bg-pink-950/40 text-pink-400 border border-pink-800/30 px-1.5 py-0.5 rounded font-semibold" title={`Reranked from initial candidate position #${cite.originalRank}`}>
+                                          Rank: #{cite.originalRank} → #{cite.newRank}
+                                        </span>
+                                      )}
+                                      {cite.rerankScore !== undefined && cite.rerankScore !== null && (
+                                        <span className="text-[10px] bg-emerald-950/40 text-emerald-400 border border-emerald-800/30 px-1.5 py-0.5 rounded font-semibold">
+                                          Rerank: {formatScore(cite.rerankScore)}
+                                        </span>
+                                      )}
                                       <span>Page {cite.pageNumber || 'N/A'}</span>
                                       <span>•</span>
                                       <span className="text-green-400">{formatScore(cite.similarityScore)} Match</span>

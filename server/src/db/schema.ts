@@ -84,6 +84,12 @@ export const searchLogs = pgTable('search_logs', {
   retrievalTimeMs: integer('retrieval_time_ms').notNull(),
   chunksSearched: integer('chunks_searched').notNull(),
   topScore: real('top_score').notNull(),
+  avgScore: real('avg_score').default(0).notNull(), // Added in Phase 5: average retrieval score
+  retrievalMode: varchar('retrieval_mode', { length: 50 }).default('semantic').notNull(), // Added in Phase 5: semantic | keyword | hybrid
+  semanticWeight: real('semantic_weight'), // Added in Phase 5: weight for semantic score
+  keywordWeight: real('keyword_weight'), // Added in Phase 5: weight for keyword score
+  isReranked: boolean('is_reranked').default(false).notNull(), // Added in Phase 6: is reranked?
+  rerankLatencyMs: integer('rerank_latency_ms').default(0).notNull(), // Added in Phase 6: rerank duration
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -125,6 +131,9 @@ export const citations = pgTable('citations', {
   documentId: uuid('document_id').references(() => documents.id, { onDelete: 'cascade' }).notNull(),
   pageNumber: integer('page_number'),
   similarityScore: real('similarity_score').notNull(),
+  originalRank: integer('original_rank'), // Added in Phase 6: original rank in candidate pool (1-20)
+  newRank: integer('new_rank'),           // Added in Phase 6: new rank after reranking (1-5)
+  rerankScore: real('rerank_score'),      // Added in Phase 6: cross-encoder relevance score
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -246,6 +255,22 @@ export const aiEvaluations = pgTable('ai_evaluations', {
   // ollamaOnline: was the local Ollama LLM available during this request?
   //   If false, the answer was a fallback message, not a real RAG response.
   ollamaOnline: boolean('ollama_online').notNull().default(true),
+
+  // ── Retrieval Mode Metrics (Added in Phase 5) ─────────────
+  // retrievalMode: tracks the query matching algorithm used: 'semantic' | 'keyword' | 'hybrid'
+  retrievalMode: varchar('retrieval_mode', { length: 50 }).default('semantic').notNull(),
+  // semanticWeight: the configuration weight assigned to semantic matching during weighted fusion
+  semanticWeight: real('semantic_weight'),
+  // keywordWeight: the configuration weight assigned to keyword matching during weighted fusion
+  keywordWeight: real('keyword_weight'),
+
+  // ── Reranking Metrics (Added in Phase 6) ───────────────────
+  // isReranked: tracks whether reranking was run on the candidate set
+  isReranked: boolean('is_reranked').default(false).notNull(),
+  // rerankLatencyMs: time spent inside the Cross-Encoder reranker
+  rerankLatencyMs: integer('rerank_latency_ms').default(0).notNull(),
+  // rerankedChunks: how many chunks were sent for reranking evaluation
+  rerankedChunks: integer('reranked_chunks').default(0).notNull(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

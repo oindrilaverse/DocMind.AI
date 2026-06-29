@@ -7,7 +7,7 @@ import { useChat } from '../hooks/useChat';
 import { 
   Brain, LogOut, FileText, Search, Plus, Trash2, 
   RefreshCw, AlertCircle, HardDrive, Clock, HelpCircle,
-  Database, Activity, Cpu, MessageSquare, Percent, BarChart2
+  Database, Activity, Cpu, MessageSquare, Percent, BarChart2, GitBranch
 } from 'lucide-react';
 import { Document } from '@docmind/shared';
 
@@ -177,6 +177,14 @@ export const DashboardPage: React.FC = () => {
             >
               <BarChart2 className="w-4 h-4" />
               <span className="hidden sm:inline">Evaluation</span>
+            </button>
+            {/* Phase 6: Cross-Encoder Reranker Benchmarking button */}
+            <button
+              onClick={() => navigate('/benchmark')}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-emerald-700/30 bg-emerald-950/20 hover:bg-emerald-900/30 rounded-xl text-emerald-400 hover:text-emerald-200 transition duration-150"
+            >
+              <GitBranch className="w-4 h-4" />
+              <span className="hidden sm:inline">Benchmark</span>
             </button>
             <button
               onClick={() => logout()}

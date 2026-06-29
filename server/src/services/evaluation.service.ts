@@ -24,6 +24,10 @@
 import { db } from '../db';
 import { aiEvaluations, documents, conversations } from '../db/schema';
 import { eq, and, gte, lte, desc, sql, inArray } from 'drizzle-orm';
+import { OllamaEmbeddingProvider } from './ollama.embedding';
+import { RetrievalProvider } from './retrieval.provider';
+import { VectorStoreProvider } from './vectorstore.provider';
+import { RerankerService } from './rerank/reranker.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Input / Output Types
@@ -56,6 +60,16 @@ export interface EvaluationInput {
 
   // Was Ollama online during this request?
   ollamaOnline: boolean;
+
+  // Phase 5: Retrieval Mode attributes
+  retrievalMode: 'semantic' | 'keyword' | 'hybrid';
+  semanticWeight?: number | null;
+  keywordWeight?: number | null;
+
+  // Phase 6: Reranking metrics
+  isReranked?: boolean;
+  rerankLatencyMs?: number;
+  rerankedChunks?: number;
 }
 
 /**
@@ -67,6 +81,8 @@ export interface EvaluationFilters {
   to?: string;             // ISO date string (e.g. "2024-12-31")
   documentId?: string;     // Filter to a specific document
   conversationId?: string; // Filter to a specific conversation
+  retrievalMode?: 'semantic' | 'keyword' | 'hybrid'; // Added in Phase 5: compare retrieval modes
+  isReranked?: boolean;    // Added in Phase 6: filter by reranked vs non-reranked queries
 }
 
 /**
@@ -88,6 +104,12 @@ export interface EvaluationRecord {
   retrievalPrecision: number;
   tokensEstimated: number;
   ollamaOnline: boolean;
+  retrievalMode: 'semantic' | 'keyword' | 'hybrid'; // Added in Phase 5: actual search algorithm
+  semanticWeight: number | null;                     // Added in Phase 5
+  keywordWeight: number | null;                      // Added in Phase 5
+  isReranked: boolean;                               // Added in Phase 6
+  rerankLatencyMs: number;                           // Added in Phase 6
+  rerankedChunks: number;                            // Added in Phase 6
   createdAt: string;
 }
 
@@ -137,6 +159,12 @@ function buildConditions(userId: string, filters: EvaluationFilters = {}) {
   }
   if (filters.conversationId) {
     conditions.push(eq(aiEvaluations.conversationId, filters.conversationId));
+  }
+  if (filters.retrievalMode) {
+    conditions.push(eq(aiEvaluations.retrievalMode, filters.retrievalMode));
+  }
+  if (filters.isReranked !== undefined) {
+    conditions.push(eq(aiEvaluations.isReranked, filters.isReranked));
   }
 
   return conditions;
@@ -202,6 +230,12 @@ export class EvaluationService {
         hallucinationScore,
         answerCompleteness,
         ollamaOnline: input.ollamaOnline,
+        retrievalMode: input.retrievalMode,
+        semanticWeight: input.semanticWeight || null,
+        keywordWeight: input.keywordWeight || null,
+        isReranked: input.isReranked || false,
+        rerankLatencyMs: input.rerankLatencyMs || 0,
+        rerankedChunks: input.rerankedChunks || 0,
       });
     } catch (err) {
       // Non-blocking: log and continue. Never let evaluation failures affect chat.
@@ -484,6 +518,12 @@ export class EvaluationService {
         retrievalPrecision: aiEvaluations.retrievalPrecision,
         tokensEstimated: aiEvaluations.tokensEstimated,
         ollamaOnline: aiEvaluations.ollamaOnline,
+        retrievalMode: aiEvaluations.retrievalMode,
+        semanticWeight: aiEvaluations.semanticWeight,
+        keywordWeight: aiEvaluations.keywordWeight,
+        isReranked: aiEvaluations.isReranked,
+        rerankLatencyMs: aiEvaluations.rerankLatencyMs,
+        rerankedChunks: aiEvaluations.rerankedChunks,
         createdAt: aiEvaluations.createdAt,
       })
       .from(aiEvaluations)
@@ -508,6 +548,12 @@ export class EvaluationService {
       retrievalPrecision: r.retrievalPrecision,
       tokensEstimated: r.tokensEstimated,
       ollamaOnline: r.ollamaOnline,
+      retrievalMode: r.retrievalMode as 'semantic' | 'keyword' | 'hybrid',
+      semanticWeight: r.semanticWeight,
+      keywordWeight: r.keywordWeight,
+      isReranked: r.isReranked,
+      rerankLatencyMs: r.rerankLatencyMs,
+      rerankedChunks: r.rerankedChunks,
       createdAt: r.createdAt.toISOString(),
     }));
   }
@@ -554,5 +600,171 @@ export class EvaluationService {
     );
 
     return [csvHeader, ...csvRows].join('\n');
+  }
+
+  /**
+   * getBenchmarkHistory()
+   *
+   * Queries and aggregates latency and citation coverage statistics comparing
+   * runs with reranking enabled against runs without reranking.
+   */
+  static async getBenchmarkHistory(userId: string) {
+    // 1. Averages for reranked runs
+    const [rerankStats] = await db
+      .select({
+        avgTotalLatencyMs: sql<number>`COALESCE(avg(${aiEvaluations.totalLatencyMs}), 0)`,
+        avgRetrievalLatencyMs: sql<number>`COALESCE(avg(${aiEvaluations.retrievalLatencyMs}), 0)`,
+        avgRerankLatencyMs: sql<number>`COALESCE(avg(${aiEvaluations.rerankLatencyMs}), 0)`,
+        avgLlmLatencyMs: sql<number>`COALESCE(avg(${aiEvaluations.llmLatencyMs}), 0)`,
+        avgCitationCoverage: sql<number>`COALESCE(avg(${aiEvaluations.citationCoverage}), 0)`,
+        avgSimilarityScore: sql<number>`COALESCE(avg(${aiEvaluations.avgSimilarityScore}), 0)`,
+        totalQuestions: sql<number>`count(*)`,
+      })
+      .from(aiEvaluations)
+      .where(and(eq(aiEvaluations.userId, userId), eq(aiEvaluations.isReranked, true)));
+
+    // 2. Averages for non-reranked runs
+    const [noRerankStats] = await db
+      .select({
+        avgTotalLatencyMs: sql<number>`COALESCE(avg(${aiEvaluations.totalLatencyMs}), 0)`,
+        avgRetrievalLatencyMs: sql<number>`COALESCE(avg(${aiEvaluations.retrievalLatencyMs}), 0)`,
+        avgRerankLatencyMs: sql<number>`COALESCE(avg(${aiEvaluations.rerankLatencyMs}), 0)`,
+        avgLlmLatencyMs: sql<number>`COALESCE(avg(${aiEvaluations.llmLatencyMs}), 0)`,
+        avgCitationCoverage: sql<number>`COALESCE(avg(${aiEvaluations.citationCoverage}), 0)`,
+        avgSimilarityScore: sql<number>`COALESCE(avg(${aiEvaluations.avgSimilarityScore}), 0)`,
+        totalQuestions: sql<number>`count(*)`,
+      })
+      .from(aiEvaluations)
+      .where(and(eq(aiEvaluations.userId, userId), eq(aiEvaluations.isReranked, false)));
+
+    return {
+      withRerank: {
+        avgTotalLatencyMs: Math.round(Number(rerankStats?.avgTotalLatencyMs || 0)),
+        avgRetrievalLatencyMs: Math.round(Number(rerankStats?.avgRetrievalLatencyMs || 0)),
+        avgRerankLatencyMs: Math.round(Number(rerankStats?.avgRerankLatencyMs || 0)),
+        avgLlmLatencyMs: Math.round(Number(rerankStats?.avgLlmLatencyMs || 0)),
+        avgCitationCoverage: Number(rerankStats?.avgCitationCoverage || 0),
+        avgSimilarityScore: Number(rerankStats?.avgSimilarityScore || 0),
+        totalQuestions: Number(rerankStats?.totalQuestions || 0),
+      },
+      withoutRerank: {
+        avgTotalLatencyMs: Math.round(Number(noRerankStats?.avgTotalLatencyMs || 0)),
+        avgRetrievalLatencyMs: Math.round(Number(noRerankStats?.avgRetrievalLatencyMs || 0)),
+        avgRerankLatencyMs: Math.round(Number(noRerankStats?.avgRerankLatencyMs || 0)),
+        avgLlmLatencyMs: Math.round(Number(noRerankStats?.avgLlmLatencyMs || 0)),
+        avgCitationCoverage: Number(noRerankStats?.avgCitationCoverage || 0),
+        avgSimilarityScore: Number(noRerankStats?.avgSimilarityScore || 0),
+        totalQuestions: Number(noRerankStats?.totalQuestions || 0),
+      },
+    };
+  }
+
+  /**
+   * runQueryBenchmark()
+   *
+   * Runs the exact same query through Semantic-only, Hybrid, and Hybrid + Reranker pipeline stages,
+   * measuring latencies and score qualities side-by-side.
+   */
+  static async runQueryBenchmark(userId: string, query: string, documentId?: string) {
+    const scopeDocIds = documentId ? [documentId] : [];
+    
+    // 1. Run Semantic Only
+    const semStart = Date.now();
+    const semVector = await new OllamaEmbeddingProvider().generateEmbedding(query);
+    const semResults = await new RetrievalProvider(new VectorStoreProvider()).retrieveChunks(
+      semVector,
+      scopeDocIds,
+      5,
+      { mode: 'semantic', userId }
+    );
+    const semLatency = Date.now() - semStart;
+
+    // 2. Run Hybrid Only (Weights: 0.5 semantic, 0.5 keyword)
+    const hybStart = Date.now();
+    const hybVector = await new OllamaEmbeddingProvider().generateEmbedding(query);
+    const hybResults = await new RetrievalProvider(new VectorStoreProvider()).retrieveChunks(
+      hybVector,
+      scopeDocIds,
+      5,
+      {
+        mode: 'hybrid',
+        queryText: query,
+        userId,
+        semanticWeight: Number(process.env.HYBRID_SEMANTIC_WEIGHT || 0.5),
+        keywordWeight: Number(process.env.HYBRID_KEYWORD_WEIGHT || 0.5),
+      }
+    );
+    const hybLatency = Date.now() - hybStart;
+
+    // 3. Run Hybrid + Reranker
+    const rerankStart = Date.now();
+    const rerankVector = await new OllamaEmbeddingProvider().generateEmbedding(query);
+    let rerankResults = await new RetrievalProvider(new VectorStoreProvider()).retrieveChunks(
+      rerankVector,
+      scopeDocIds,
+      20, // Retrieve top 20 candidates
+      {
+        mode: 'hybrid',
+        queryText: query,
+        userId,
+        semanticWeight: Number(process.env.HYBRID_SEMANTIC_WEIGHT || 0.5),
+        keywordWeight: Number(process.env.HYBRID_KEYWORD_WEIGHT || 0.5),
+      }
+    );
+    const preRerankLatency = Date.now() - rerankStart;
+    
+    const crossStart = Date.now();
+    rerankResults = await RerankerService.rerank(query, rerankResults);
+    rerankResults = rerankResults.slice(0, 5); // Keep top 5
+    const crossLatency = Date.now() - crossStart;
+    
+    const totalRerankLatency = preRerankLatency + crossLatency;
+
+    return {
+      query,
+      semantic: {
+        latencyMs: semLatency,
+        topScore: semResults.length > 0 ? semResults[0].score : 0,
+        avgScore: semResults.length > 0 ? semResults.reduce((sum, r) => sum + r.score, 0) / semResults.length : 0,
+        results: semResults.map((r, i) => ({
+          content: r.chunk.content,
+          score: r.score,
+          documentName: (r.chunk as any).documentName || 'Document',
+          pageNumber: r.chunk.pageNumber,
+          rank: i + 1,
+        })),
+      },
+      hybrid: {
+        latencyMs: hybLatency,
+        topScore: hybResults.length > 0 ? hybResults[0].score : 0,
+        avgScore: hybResults.length > 0 ? hybResults.reduce((sum, r) => sum + r.score, 0) / hybResults.length : 0,
+        results: hybResults.map((r, i) => ({
+          content: r.chunk.content,
+          score: r.score,
+          documentName: (r.chunk as any).documentName || 'Document',
+          pageNumber: r.chunk.pageNumber,
+          rank: i + 1,
+        })),
+      },
+      hybridRerank: {
+        latencyMs: totalRerankLatency,
+        retrievalLatencyMs: preRerankLatency,
+        rerankLatencyMs: crossLatency,
+        topScore: rerankResults.length > 0 ? rerankResults[0].score : 0,
+        avgScore: rerankResults.length > 0 ? rerankResults.reduce((sum, r) => sum + r.score, 0) / rerankResults.length : 0,
+        topRerankScore: rerankResults.length > 0 ? rerankResults[0].rerankScore || 0 : 0,
+        avgRerankScore: rerankResults.length > 0 ? rerankResults.reduce((sum, r) => sum + (r.rerankScore || 0), 0) / rerankResults.length : 0,
+        results: rerankResults.map((r, i) => ({
+          content: r.chunk.content,
+          score: r.score,
+          documentName: (r.chunk as any).documentName || 'Document',
+          pageNumber: r.chunk.pageNumber,
+          originalRank: r.originalRank,
+          newRank: r.newRank,
+          rerankScore: r.rerankScore,
+          rank: i + 1,
+        })),
+      },
+    };
   }
 }

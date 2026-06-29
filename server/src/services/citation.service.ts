@@ -11,6 +11,9 @@ export interface CitationItem {
   pageNumber: number | null;
   similarityScore: number;
   snippet: string;
+  originalRank?: number | null; // Added in Phase 6
+  newRank?: number | null;      // Added in Phase 6
+  rerankScore?: number | null;  // Added in Phase 6
 }
 
 export class CitationService {
@@ -58,6 +61,9 @@ export class CitationService {
         documentId: chunk.documentId,
         pageNumber: chunk.pageNumber,
         similarityScore: score,
+        originalRank: contextItem.originalRank || null,
+        newRank: contextItem.newRank || null,
+        rerankScore: contextItem.rerankScore || null,
       });
 
       citationItems.push({
@@ -67,6 +73,9 @@ export class CitationService {
         pageNumber: chunk.pageNumber,
         similarityScore: score,
         snippet: chunk.content,
+        originalRank: contextItem.originalRank || null,
+        newRank: contextItem.newRank || null,
+        rerankScore: contextItem.rerankScore || null,
       });
     }
 
@@ -105,6 +114,9 @@ export class CitationService {
         pageNumber: citations.pageNumber,
         similarityScore: citations.similarityScore,
         documentName: citations.documentId, // temporary placeholder, will resolve joined name
+        originalRank: citations.originalRank,
+        newRank: citations.newRank,
+        rerankScore: citations.rerankScore,
       })
       .from(citations)
       .where(eq(citations.answerId, answerId));
@@ -141,6 +153,9 @@ export class CitationService {
           pageNumber: rec.pageNumber,
           similarityScore: rec.similarityScore,
           snippet: chunk?.content || '',
+          originalRank: rec.originalRank,
+          newRank: rec.newRank,
+          rerankScore: rec.rerankScore,
         };
       })
     );

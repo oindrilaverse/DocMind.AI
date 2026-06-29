@@ -9,6 +9,12 @@ export interface SearchResultItem {
   content: string;
   pageNumber: number | null;
   score: number;
+  semanticScore?: number; // Added in Phase 5
+  keywordScore?: number;  // Added in Phase 5
+  retrievalMode?: 'semantic' | 'keyword' | 'hybrid'; // Added in Phase 5
+  originalRank?: number;  // Added in Phase 6: original rank in candidate pool (1-20)
+  newRank?: number;       // Added in Phase 6: new rank after reranking (1-5)
+  rerankScore?: number;   // Added in Phase 6: cross-encoder relevance score
 }
 
 export interface SearchResponse {
@@ -17,6 +23,10 @@ export interface SearchResponse {
     retrievalTimeMs: number;
     chunksSearched: number;
     topScore: number;
+    avgScore: number;      // Added in Phase 5
+    retrievalMode: 'semantic' | 'keyword' | 'hybrid'; // Added in Phase 5
+    isReranked?: boolean;   // Added in Phase 6
+    rerankLatencyMs?: number; // Added in Phase 6
   };
 }
 
@@ -61,12 +71,16 @@ export function useSearch() {
   const executeSearch = async (
     query: string,
     documentId?: string,
-    limit?: number
+    limit?: number,
+    mode?: 'semantic' | 'keyword' | 'hybrid',
+    rerank?: boolean // Added in Phase 6
   ): Promise<SearchResponse> => {
     const response = await api.post('/search/query', {
       query,
       documentId: documentId || undefined,
       limit,
+      mode,
+      rerank,
     });
     return response.data;
   };
